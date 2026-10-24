@@ -1,4 +1,4 @@
-import React from 'react';
+import React,{useState} from 'react';
 
 
 
@@ -39,6 +39,8 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
         ['04','THE ONE-USE CHECK','The collector verifies a token once. Reports release only after the event closes, a 15-minute cooldown and at least five responses. No live individual updates.']
 
       ].map(([n,t,p])=><article key={n}><span>{n}</span><div><h2>{t}</h2><p>{p}</p></div></article>)}</div>
+
+      <PrivacyLab Icon={Icon}/>
 
       <section className="proof-storage"><div><span className="eyebrow">THE FEEDBACK RECORD</span><h2>WHAT WE STORE.</h2><p>Event ID, rating, topic, comment, random record ID, and a one-use token hash. No submission date, time, IP or browser metadata is stored in feedback records.</p><span className="record-label">NO NAME / NO EMAIL / NO INVITATION CODE</span></div><div><span className="eyebrow">THE REAL-WORLD LIMITS</span><h2>WHAT THIS CAN’T HIDE.</h2><p>Hosting providers can see network metadata. Timing and identifying comments can reveal information. The whole application has not been independently audited.</p><p>Implemented with Cloudflare’s RFC 9474 library. This explains the design; it is not a claim of perfect anonymity.</p></div></section>
 
@@ -92,5 +94,12 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
   </div>;
 
+}
+
+function PrivacyLab({Icon}){
+  const [responses,setResponses]=useState(4),[closed,setClosed]=useState(false),[cooled,setCooled]=useState(false),[smallest,setSmallest]=useState(2);
+  const enough=responses>=5,report=closed&&cooled&&enough,breakdown=report&&smallest>=5&&responses-smallest>=5;
+  const gates=[['Event closed',closed],['Five or more responses',enough],['15-minute cooldown complete',cooled]];
+  return <section className="privacy-lab" aria-labelledby="privacy-lab-title"><header><div><span className="eyebrow">INTERACTIVE PRIVACY LAB</span><h2 id="privacy-lab-title">WHAT GETS RELEASED?</h2></div><p>Change the cohort conditions. The same rules are enforced by the reporting API.</p></header><div className="privacy-lab-grid"><div className="lab-controls"><label>Valid responses <strong>{responses}</strong><input type="range" min="0" max="20" value={responses} onChange={e=>{const value=Number(e.target.value);setResponses(value);setSmallest(Math.min(smallest,value));}}/></label><label>Smallest comparison group <strong>{smallest}</strong><input type="range" min="0" max={responses} value={smallest} onChange={e=>setSmallest(Number(e.target.value))}/></label><label className="lab-check"><input type="checkbox" checked={closed} onChange={e=>setClosed(e.target.checked)}/><span><strong>Event is closed</strong><small>The cohort can no longer change.</small></span></label><label className="lab-check"><input type="checkbox" checked={cooled} onChange={e=>setCooled(e.target.checked)}/><span><strong>Cooldown is complete</strong><small>At least 15 minutes have passed.</small></span></label></div><div className={'lab-result '+(report?'released':'protected')}><div className="lab-result-title"><Icon name={report?'check':'lock'} size={25}/><span>{report?'REPORT RELEASED':'REPORT PROTECTED'}</span></div><div className="gate-list">{gates.map(([name,pass])=><div key={name}><span>{pass?'PASS':'WAIT'}</span><p>{name}</p></div>)}</div><div className="lab-output"><strong>Available to organisers</strong><p>{report?'Response total and overall average. Released comments remain separated from ratings and topics.':'Nothing from this cohort is published yet.'}</p><strong>Detailed breakdowns</strong><p>{breakdown?'Available because both the selected group and its complement contain at least five responses.':'Withheld because a group or its complement contains fewer than five responses.'}</p></div></div></div><footer><Icon name="shield" size={16}/><span>This simulator explains the policy. It does not expose or query stored participant responses.</span></footer></section>;
 }
 
