@@ -87,6 +87,6 @@ app.get('/api/export',auth,safe(async(req,res)=>{
 }));
 app.get('/api/health',(req,res)=>res.json({ok:true,demo,role:'collector'}));
 app.use('/api',(req,res)=>res.status(404).json({error:'API route not found.'}));
-if(production){app.use(express.static('dist'));app.get('/{*path}',(req,res)=>res.sendFile('index.html',{root:'dist'}));}else{const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true},appType:'spa'});app.use(vite.middlewares);}
+if(production){app.use(express.static('dist'));app.get('/{*path}',(req,res)=>res.sendFile('index.html',{root:'dist'}));}else if(process.env.NODE_ENV!=='test'){const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true},appType:'spa'});app.use(vite.middlewares);}
 app.use((err,req,res,next)=>res.status(err.code===11000?409:err.status||500).json({error:err.code===11000?'Token already used.':err.status?err.message:'Request could not be processed.'}));
 app.listen(port,production?'0.0.0.0':'127.0.0.1',()=>console.log(`ClubPulse collector: http://localhost:${port}. No request or body logging.`));
