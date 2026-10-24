@@ -74,7 +74,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
         <div className="ticket-date"><strong>{new Date(event.date+'T12:00:00').getDate()}</strong><span>{new Date(event.date+'T12:00:00').toLocaleString('en',{month:'short'})}</span><small>{event.date.slice(0,4)}</small></div>
 
-        <div className="ticket-body"><div className="ticket-labels"><span className="ticket-tag">CODE NEEDED</span>{event.demo&&<span className="ticket-tag demo-tag">DEMO EVENT</span>}</div><h3>{event.name}</h3>{event.description&&<p>{event.description}</p>}</div>
+        <div className="ticket-body"><div className="ticket-labels">{event.demo?<span className="ticket-tag demo-tag">SAMPLE EVENT</span>:<span className="ticket-tag">CODE NEEDED</span>}</div><h3>{event.name}</h3>{event.description&&<p>{event.description.replace(/^Synthetic showcase:\s*/,'')}</p>}</div>
 
         <button className="ticket-cta" aria-label={event.demo?'View sample report for '+event.name:'Give feedback for '+event.name} onClick={()=>event.demo?onNavigate('demo'):openEvent(event.id)}>{event.demo?<><span>VIEW</span><span>REPORT</span></>:<>SPEAK<br/>UP</>} <Icon name="arrow" size={30}/></button>
 
