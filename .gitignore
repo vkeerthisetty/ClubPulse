@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+!.env.issuer.example
+data/
+*.log
+clubpulse-invitation-codes*.txt
+
+output/pdf/final-page-*.png
+output/pdf/guide-page-*.png
