@@ -11,6 +11,7 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  assert.equal((await call('/api/statistics')).r.status,401);
  const login=await call('/api/login',{email:'admin@clubpulse.local',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
  const config=(await call('/api/config')).data;assert.equal(config.issuerOrigin,'http://localhost:3012');
+ const showcase=await call('/api/showcase');assert.equal(showcase.r.status,200);assert.equal(showcase.data.readOnly,true);assert.equal(showcase.data.count,null);assert.ok(showcase.data.events.every(e=>e.demo&&e.report));
  const preflight=await fetch(config.issuerOrigin+'/api/events/example/issue',{method:'OPTIONS',headers:{Origin:base,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),base);assert.equal(preflight.headers.get('access-control-allow-credentials'),null);
  assert.equal((await fetch(config.issuerOrigin+'/api/events/example/issue',{method:'OPTIONS',headers:{Origin:'https://untrusted.invalid'}})).status,403);
  assert.equal((await call('/api/statistics',null,true)).data.count,null);

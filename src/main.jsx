@@ -8,6 +8,8 @@ import './design.css';
 
 import './responsive.css';
 
+import './showcase.css';
+
 import Front from './Front.jsx';
 import Dashboard,{ReleasedInbox} from './Dashboard.jsx';
 
@@ -30,10 +32,10 @@ const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'nume
 function downloadText(text,name){const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
 const adminPages=['statistics','feedback','events','privacy'];
-function routePage(){const hash=location.hash.slice(1);if(hash.startsWith('participant')||hash.startsWith('submit'))return 'submit';if(hash==='proof')return 'proof';if(hash==='admin'||hash==='admin/login'||hash==='backstage')return 'login';const page=hash.replace(/^admin\//,'');return adminPages.includes(page)?page:'home';}
+function routePage(){const hash=location.hash.slice(1);if(hash.startsWith('participant')||hash.startsWith('submit'))return 'submit';if(hash==='proof')return 'proof';if(hash==='demo')return 'demo';if(hash==='admin'||hash==='admin/login'||hash==='backstage')return 'login';const page=hash.replace(/^admin\//,'');return adminPages.includes(page)?page:'home';}
 function App(){
 
- const [config,setConfig]=useState(null),[user,setUser]=useState(null),[page,setPage]=useState(routePage()),[events,setEvents]=useState([]),[data,setData]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
+ const [config,setConfig]=useState(null),[user,setUser]=useState(null),[page,setPage]=useState(routePage()),[events,setEvents]=useState([]),[data,setData]=useState(null),[showcase,setShowcase]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
 
  const [event,setEvent]=useState(''),[period,setPeriod]=useState('30'),[rating,setRating]=useState(''),[category,setCategory]=useState(''),[search,setSearch]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[modal,setModal]=useState(null),[codes,setCodes]=useState([]);
 
@@ -48,6 +50,7 @@ function App(){
  async function refresh(){const [d,e]=await Promise.all([api('/statistics?'+query),api('/events')]);setData(d);setEvents(e);}
 
  useEffect(()=>{if(!user||!adminPages.includes(page))return;let active=true;setLoading(true);api('/statistics?'+query).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[user,event,period,rating,category,search,from,to,page]);
+ useEffect(()=>{if(page!=='demo')return;let active=true;setLoading(true);api('/showcase',{anonymous:true}).then(d=>{if(active)setShowcase(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[page]);
 
  async function action(fn){setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
 
@@ -60,6 +63,8 @@ function App(){
  if(!config)return <div className="boot"><Logo/><p>{error||'Opening your workspace...'}</p></div>;
 
  if(page==='home'||page==='proof')return <Front events={events} config={config} onNavigate={go} Logo={Logo} Icon={Icon} proof={page==='proof'}/>;
+
+ if(page==='demo')return <PublicDemo data={showcase} event={event} onEvent={setEvent} onNavigate={go} onRefresh={()=>api('/showcase',{anonymous:true}).then(setShowcase)} Logo={Logo} Icon={Icon}/>;
 
  if(page==='submit')return <FeedbackForm config={config} events={events} onHome={()=>go('home')}/>;
 
@@ -86,6 +91,11 @@ function App(){
 }
 
 function Empty({icon,title,text,action,onClick}){return <div className="empty"><span className="empty-icon"><Icon name={icon} size={26}/></span><h3>{title}</h3><p>{text}</p>{action&&<button className="text-button" onClick={onClick}>{action}<Icon name="arrow" size={16}/></button>}</div>}
+
+function PublicDemo({data,event,onEvent,onNavigate,onRefresh,Logo,Icon}){
+ if(!data)return <div className="boot"><Logo/><p>Preparing the guided demo...</p></div>;
+ return <div className="showcase-page"><header className="front-header"><Logo/><nav aria-label="Demo navigation"><a href="#" onClick={()=>onNavigate('home')}>How it works</a><a className="selected" href="#demo">Demo report</a><a className="backstage-link" href="#admin/login" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="arrow" size={17}/></a></nav></header><main className="showcase-main"><section className="showcase-intro"><div><span className="eyebrow">READ-ONLY PRODUCT TOUR</span><h1>SEE WHAT ORGANISERS <em>learn.</em></h1><p>Explore a complete ClubPulse report built from clearly labelled synthetic responses. Nothing on this page exposes participant identities, invitation codes or submission times.</p></div><div className="showcase-key"><strong>{data.events?.length||0}</strong><span>sample events</span><strong>{data.count||0}</strong><span>sample responses</span><small>Interview demonstration only</small></div></section><div className="showcase-guide"><strong>START HERE</strong><span>1. Review the overall signal</span><span>2. Open the listening notes</span><span>3. Turn a note into an action</span></div><Dashboard data={data} events={data.events||[]} event={event} onEvent={onEvent} onNavigate={()=>onNavigate('login')} Icon={Icon} onRefresh={onRefresh}/></main><footer className="front-footer"><span>ClubPulse · read-only product demonstration</span><div><a href="#proof" onClick={()=>onNavigate('proof')}>How anonymity works <Icon name="arrow" size={14}/></a><a href="#" onClick={()=>onNavigate('home')}>Back to events</a></div></footer></div>;
+}
 
 const suite=RSABSSA.SHA384.PSS.Randomized();
 

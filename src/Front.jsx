@@ -16,6 +16,8 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
       <a className={proof?'selected':''} href="#proof" onClick={()=>onNavigate('proof')}>Anonymity proof</a>
 
+      <a href="#demo" onClick={()=>onNavigate('demo')}>Demo report</a>
+
       <a className="backstage-link" href="#admin/login" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="arrow" size={17}/></a>
 
     </nav></header>
@@ -55,6 +57,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
       </section>
 
       <section className="access-entrances" aria-label="Choose your access"><div><span className="eyebrow">FOR ATTENDEES</span><h2>PARTICIPANT SIGN-IN</h2><p>Your event code opens anonymous feedback. No email or password required.</p><button className="primary" onClick={()=>onNavigate('submit')}>Enter with event code <Icon name="arrow" size={18}/></button></div><div><span className="eyebrow">FOR AUTHORISED ORGANISERS</span><h2>ADMINISTRATOR SIGN-IN</h2><p>Your club credentials open event management, invitations and protected reports.</p><button className="button" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="lock" size={18}/></button></div></section>
+      <section className="reviewer-demo"><div><span className="eyebrow">VISITING FOR A PRODUCT REVIEW?</span><h2>EXPLORE A COMPLETE REPORT.</h2><p>Open a read-only dashboard with four sample events, twenty synthetic responses and the privacy controls explained in context. No account or event code required.</p></div><button className="primary" onClick={()=>onNavigate('demo')}>Explore the guided demo <Icon name="arrow" size={18}/></button></section>
       <section className="front-steps" aria-label="How it works">{[
 
         ['1','Pick your event','Find your workshop below. Your organiser gives you a one-use invitation code.'],
@@ -73,7 +76,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
         <div className="ticket-body"><div className="ticket-labels"><span className="ticket-tag">CODE NEEDED</span>{event.demo&&<span className="ticket-tag demo-tag">DEMO EVENT</span>}</div><h3>{event.name}</h3>{event.description&&<p>{event.description}</p>}</div>
 
-        <button className="ticket-cta" aria-label={'Give feedback for '+event.name} onClick={()=>openEvent(event.id)}>SPEAK<br/>UP <Icon name="arrow" size={30}/></button>
+        <button className="ticket-cta" aria-label={event.demo?'View sample report for '+event.name:'Give feedback for '+event.name} onClick={()=>event.demo?onNavigate('demo'):openEvent(event.id)}>{event.demo?<><span>VIEW</span><span>REPORT</span></>:<>SPEAK<br/>UP</>} <Icon name="arrow" size={30}/></button>
 
       </article>)}</div> : <div className="event-ticket empty-ticket"><div className="ticket-date"><Icon name="calendar" size={33}/><small>UP NEXT</small></div><div className="ticket-body"><span className="ticket-tag">THE STAGE IS QUIET</span><h3>No open events. Yet.</h3><p>When your organiser opens an event, it lands here.<br className="desktop-break"/> Have an invitation? Ask them for the event link.</p></div><button className="ticket-cta" onClick={()=>onNavigate('login')}>SET<br/>ONE UP <Icon name="arrow" size={30}/></button></div>}
 

@@ -74,6 +74,10 @@ async function releasedEvents(){
   return events;
 }
 function state(e){return e.report?'released':e.open?'collecting':e.releaseAt>Date.now()?'cooldown':'protected';}
+app.get('/api/showcase',safe(async(req,res)=>{
+  const events=(await db.events()).filter(e=>e.demo&&e.report);
+  res.json({...combineReports(events),events:events.map(e=>({...publicEvent(e),count:e.report.count,reportState:'released',report:{count:e.report.count,average:e.report.average,positive:e.report.positive,demo:true,version:e.report.version}})),privacy:{minimum:MINIMUM,delayMinutes:15,immutable:true,noTimestamps:true,cookiesOmitted:true,smallCellsSuppressed:true,export:'aggregate-only'},demo:true,readOnly:true});
+}));
 app.get('/api/statistics',auth,safe(async(req,res)=>{
   if(!validateReportQuery(req.query))return res.status(400).json({error:'Only whole-event selection is supported. Rating, topic, search and submission-date slices are disabled for privacy.'});
   const events=await releasedEvents(),selected=events.filter(e=>!req.query.event||e._id===req.query.event);
