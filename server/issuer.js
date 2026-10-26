@@ -16,7 +16,7 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
   if(!demo){
     connection=await mongoose.createConnection(mongoUri,{serverSelectionTimeoutMS:8000}).asPromise();
     Event=connection.model('IssuerEvent',new mongoose.Schema({_id:String,open:Boolean,publicJwk:Object,privateJwk:Object},{versionKey:false}));
-    Invite=connection.model('IssuerInvite',new mongoose.Schema({_id:{type:String,default:()=>crypto.randomUUID()},eventId:String,codeHash:{type:String,unique:true},blindedHash:String},{versionKey:false}));
+    Invite=connection.model('IssuerInvite',new mongoose.Schema({_id:{type:String,default:()=>crypto.randomUUID()},eventId:String,codeHash:{type:String,unique:true},blindedHash:String,revoked:Boolean},{versionKey:false}));
     await Promise.all([Event.init(),Invite.init()]);
   }
   const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -30,7 +30,7 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
     if(req.method==='OPTIONS')return res.sendStatus(204);
     next();
   });
-  app.use(express.json({limit:'4kb'}));
+  app.use(express.json({limit:'12kb'}));
   // Transient pseudonymous abuse keys, never logged or persisted. A restart rotates them.
   const abuseSecret=randomBytes(32);
   app.use('/api',rateLimit({windowMs:60000,limit:20,keyGenerator:req=>createHmac('sha256',abuseSecret).update(ipKeyGenerator(req.ip||'127.0.0.1')).digest('hex'),validate:{keyGeneratorIpFallback:false}}));
@@ -53,6 +53,15 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
     const rows=codes.map(code=>({eventId:e._id,codeHash:hash(code)}));if(demo)for(const row of rows)memoryInvites.set(row.codeHash,row);else await Invite.insertMany(rows);
     res.json({codes});
   }));
+  app.post('/internal/events/:id/revoke',internal,safe(async(req,res)=>{
+    const {codes}=req.body;
+    if(!Array.isArray(codes)||!codes.length||codes.length>200||codes.some(c=>typeof c!=='string'||!c.trim()||c.length>100))return res.status(400).json({error:'Enter 1 to 200 invitation codes.'});
+    const e=await getEvent(req.params.id);if(!e||!e.open)return res.status(400).json({error:'Event is not open.'});
+    const hashes=codes.map(c=>hash(c.trim()));
+    if(demo){for(const h of hashes){const row=memoryInvites.get(h);if(row?.eventId===e._id&&!row.blindedHash)row.revoked=true;}}
+    else await Invite.updateMany({eventId:e._id,codeHash:{$in:hashes},blindedHash:{$exists:false}},{$set:{revoked:true}});
+    res.json({ok:true,message:'Unused matching invitations revoked. Already exchanged tokens are unaffected.'});
+  }));
   app.post('/api/events/:id/issue',safe(async(req,res)=>{
     // Collector/admin cookies must never be forwarded to this protocol endpoint.
     if(req.headers.cookie)return res.status(400).json({error:'Invitation exchange must omit cookies.'});
@@ -61,11 +70,11 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
     const bytes=Uint8Array.from(Buffer.from(blinded,'base64'));if(bytes.length!==256)return res.status(400).json({error:'Invalid token size.'});
     const codeHash=hash(code),blindedHash=hash(bytes);
     const invitation=demo?memoryInvites.get(codeHash):await Invite.findOne({eventId:e._id,codeHash}).lean();
-    if(!invitation||invitation.eventId!==e._id||invitation.blindedHash&&invitation.blindedHash!==blindedHash)return res.status(409).json({error:'Code invalid or exchanged. Retry in the original tab.'});
+    if(!invitation||invitation.revoked||invitation.eventId!==e._id||invitation.blindedHash&&invitation.blindedHash!==blindedHash)return res.status(409).json({error:'Code invalid, revoked or exchanged. Retry in the original tab or ask the organiser.'});
     const key=await crypto.subtle.importKey('jwk',e.privateJwk,{name:'RSA-PSS',hash:'SHA-384'},true,['sign']);
     const signature=await suite.blindSign(key,bytes);
-    if(demo){if(invitation.blindedHash&&invitation.blindedHash!==blindedHash)return res.status(409).json({error:'Code already exchanged.'});invitation.blindedHash=blindedHash;}
-    else if(!await Invite.findOneAndUpdate({eventId:e._id,codeHash,$or:[{blindedHash:{$exists:false}},{blindedHash}]},{$set:{blindedHash}},{new:true}))return res.status(409).json({error:'Code already exchanged.'});
+    if(demo){if(invitation.revoked||invitation.blindedHash&&invitation.blindedHash!==blindedHash)return res.status(409).json({error:'Code unavailable.'});invitation.blindedHash=blindedHash;}
+    else if(!await Invite.findOneAndUpdate({eventId:e._id,codeHash,revoked:{$ne:true},$or:[{blindedHash:{$exists:false}},{blindedHash}]},{$set:{blindedHash}},{new:true}))return res.status(409).json({error:'Code unavailable.'});
     res.json({signature:Buffer.from(signature).toString('base64')});
   }));
   app.get('/health',(req,res)=>res.json({ok:true,role:'issuer'}));

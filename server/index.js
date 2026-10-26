@@ -53,6 +53,17 @@ app.get('/api/events',safe(async(req,res)=>res.json((await db.events()).map(publ
 app.post('/api/events',auth,safe(async(req,res)=>{const {name,description='',date}=req.body;if(typeof name!=='string'||!name.trim()||name.length>100||typeof description!=='string'||description.length>500||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return res.status(400).json({error:'Enter a name, date, and description under 500 characters.'});const id=randomUUID(),key=await issuer('/events',{id});const e=await db.addEvent({_id:id,name:name.trim(),description:description.trim(),date,open:true,publicJwk:key.publicJwk});res.status(201).json(publicEvent(e));}));
 app.patch('/api/events/:id',auth,safe(async(req,res)=>{const e=await db.event(req.params.id);if(!e)return res.status(404).json({error:'Event not found.'});if(typeof req.body.open!=='boolean')return res.status(400).json({error:'Invalid state.'});if(e.report&&!e.demo)return res.status(409).json({error:'This event has a sealed report. Create a new event instead of changing its cohort.'});if(req.body.open){await issuer('/events/'+e._id+'/state',{open:true});await db.updateEvent(e._id,{open:true,releaseAt:null});}else{await db.updateEvent(e._id,{open:false,releaseAt:Date.now()+releaseDelay});await issuer('/events/'+e._id+'/state',{open:false});}res.json({ok:true});}));
 app.post('/api/events/:id/invites',auth,safe(async(req,res)=>{const e=await db.event(req.params.id);if(!e||!e.open)return res.status(400).json({error:'Event is not open.'});res.json(await issuer('/events/'+e._id+'/invites',{count:req.body.count}));}));
+app.patch('/api/events/:id/details',auth,safe(async(req,res)=>{
+ const e=await db.event(req.params.id);if(!e)return res.status(404).json({error:'Event not found.'});
+ if(e.report)return res.status(409).json({error:'Sealed reports keep their original event details.'});
+ const {name,description='',date}=req.body;
+ if(typeof name!=='string'||!name.trim()||name.length>100||typeof description!=='string'||description.length>500||!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)return res.status(400).json({error:'Enter a valid event name, calendar date and description.'});
+ if(!await db.editEvent(e._id,{name:name.trim(),description:description.trim(),date}))return res.status(409).json({error:'The event was sealed while editing. Its details are now fixed.'});res.json({ok:true});
+}));
+app.post('/api/events/:id/revoke',auth,safe(async(req,res)=>{
+ const e=await db.event(req.params.id);if(!e||!e.open)return res.status(400).json({error:'Select an open event.'});
+ res.json(await issuer('/events/'+e._id+'/revoke',{codes:req.body.codes}));
+}));
 app.get('/api/events/:id/key',safe(async(req,res)=>{const e=await db.event(req.params.id);if(!e||!e.open)return res.status(404).json({error:'Event is not accepting feedback.'});res.json(e.publicJwk);}));
 // Intentionally no /issue endpoint here. Invitations and private keys live at the issuer.
 app.post('/api/feedback',safe(async(req,res)=>{

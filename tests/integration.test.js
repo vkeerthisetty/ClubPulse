@@ -19,6 +19,11 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  assert.equal((await fetch(config.issuerOrigin+'/api/events/example/issue',{method:'OPTIONS',headers:{Origin:'https://untrusted.invalid'}})).status,403);
  assert.equal((await call('/api/statistics',null,true)).data.count,null);
  const e=await call('/api/events',{name:'Private workshop',date:'2026-10-24',description:'Integration test'},true);assert.equal(e.r.status,201);const id=e.data.id;
+ assert.equal((await call('/api/events/'+id+'/details',{name:'Revised workshop',date:'2026-10-25',description:'Revised'},false,'PATCH')).r.status,401);
+ assert.equal((await call('/api/events/'+id+'/details',{name:'Revised workshop',date:'2026-02-30'},true,'PATCH')).r.status,400);
+ assert.equal((await call('/api/events/'+id+'/details',{name:'Private workshop',date:'2026-10-25',description:'Revised'},true,'PATCH')).r.status,200);
+ assert.equal((await call('/api/events')).data.find(e=>e.id===id).description,'Revised');
+ assert.equal((await call('/api/events/'+id+'/revoke',{codes:['invalid']},false)).r.status,401);
  // Every administrative capability rejects missing credentials and a fabricated participant cookie.
  const protectedRoutes=[['/api/statistics',null,'GET'],['/api/export',null,'GET'],['/api/session',null,'GET'],['/api/events',{name:'Denied',date:'2026-10-24'},'POST'],['/api/events/'+id,{open:false},'PATCH'],['/api/events/'+id+'/invites',{count:1},'POST']];
  for(const [path,body,method] of protectedRoutes){
@@ -30,11 +35,16 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  const invites=(await call('/api/events/'+id+'/invites',{count:5},true)).data.codes;
  const jwk=(await call('/api/events/'+id+'/key')).data;assert.ok(!jwk.d);const suite=RSABSSA.SHA384.PSS.Randomized(),key=await crypto.subtle.importKey('jwk',jwk,{name:'RSA-PSS',hash:'SHA-384'},true,['verify']);
  let first;
+ const withdrawn=(await call('/api/events/'+id+'/invites',{count:1},true)).data.codes[0];
+ assert.equal((await call('/api/events/'+id+'/revoke',{codes:[withdrawn]},true)).r.status,200);
+ const withdrawnMessage=suite.prepare(crypto.getRandomValues(new Uint8Array(32))),withdrawnBlind=await suite.blind(key,withdrawnMessage);
+ assert.equal((await call('/api/events/'+id+'/issue',{code:withdrawn,blinded:enc(withdrawnBlind.blindedMsg)},false,'POST',config.issuerOrigin)).r.status,409);
  for(let i=0;i<5;i++){
   const message=suite.prepare(crypto.getRandomValues(new Uint8Array(32))),blind=await suite.blind(key,message);
   assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)})).r.status,404);
   if(i===0)assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},true,'POST',config.issuerOrigin)).r.status,400);
   const issue=await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},false,'POST',config.issuerOrigin);assert.equal(issue.r.status,200,issue.text);
+  if(i===0){assert.equal((await call('/api/events/'+id+'/revoke',{codes:[invites[i]]},true)).r.status,200);assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},false,'POST',config.issuerOrigin)).r.status,200);}
   if(i===0){const denied=await fetch(base+'/api/statistics',{headers:{Authorization:'Bearer '+issue.data.signature}});assert.equal(denied.status,401);}
   const sig=await suite.finalize(key,message,Buffer.from(issue.data.signature,'base64'),blind.inv);
   const payload={eventId:id,rating:[5,4,4,3,5][i],category:i%2?'Delivery':'Content',comment:'Released comment '+i,message:enc(message),signature:enc(sig)};
@@ -52,6 +62,7 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  const privateShowcase=await call('/api/showcase?event='+id);assert.equal(privateShowcase.data.count,null);assert.equal(privateShowcase.data.feedback.length,0);
  const repeat=(await call('/api/statistics',null,true)).data;assert.deepEqual(released.feedback,repeat.feedback);
  assert.equal((await call('/api/events/'+id,{open:true},true,'PATCH')).r.status,409);
+ assert.equal((await call('/api/events/'+id+'/details',{name:'Changed sealed report',date:'2026-10-25'},true,'PATCH')).r.status,409);
  const csv=await call('/api/export',null,true);assert.equal(csv.r.status,200);assert.ok(csv.text.includes('Private workshop'));assert.ok(!csv.text.includes('Released comment'));assert.ok(!csv.text.includes('message'));
  assert.equal((await call('/api/export?search=comment',null,true)).r.status,400);
  assert.equal((await call('/api/logout',{},true)).r.status,200);assert.equal((await call('/api/statistics',null,true)).r.status,401);
