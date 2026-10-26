@@ -6,6 +6,7 @@ import {randomBytes,createHash,timingSafeEqual,createHmac} from 'node:crypto';
 import {rateLimit,ipKeyGenerator} from 'express-rate-limit';
 import {RSABSSA} from '@cloudflare/blindrsa-ts';
 import {pathToFileURL} from 'node:url';
+import {installEvaluatorIssuer} from './evaluatorIssuer.js';
 
 export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.0.1'}) {
   if(!secret||secret.length<32||(process.env.NODE_ENV==='production'&&secret.startsWith('replace-')))throw new Error('Issuer service secret must be at least 32 characters.');
@@ -36,6 +37,7 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
   app.use('/api',rateLimit({windowMs:60000,limit:20,keyGenerator:req=>createHmac('sha256',abuseSecret).update(ipKeyGenerator(req.ip||'127.0.0.1')).digest('hex'),validate:{keyGeneratorIpFallback:false}}));
   function internal(req,res,next){const got=Buffer.from(req.headers.authorization?.replace(/^Bearer /,'')||'');const expected=Buffer.from(secret);if(got.length!==expected.length||!timingSafeEqual(got,expected))return res.status(401).json({error:'Service authentication required.'});next();}
   const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
+  installEvaluatorIssuer(app,{suite,internal,safe});
   app.post('/internal/check',internal,(req,res)=>res.json({ok:true,role:'issuer'}));
   app.post('/internal/events',internal,safe(async(req,res)=>{
     const {id}=req.body;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))return res.status(400).json({error:'Invalid event ID.'});

@@ -7,6 +7,7 @@ import {RSABSSA} from '@cloudflare/blindrsa-ts';
 import {connect,store} from './store.js';
 import {startIssuer} from './issuer.js';
 import {MINIMUM,RELEASE_DELAY_MS,sealReport,combineReports,validateReportQuery,reportCsv} from './privacy.js';
+import {installEvaluator} from './evaluator.js';
 const production=process.env.NODE_ENV==='production';
 const demo=process.env.DEMO_MODE==='true'||(!process.env.MONGODB_URI&&!production);
 if(production&&demo)throw new Error('Demo mode forbidden in production.');
@@ -23,7 +24,7 @@ if(!process.env.ISSUER_URL){
   if(!demo)throw new Error('Configure ISSUER_URL for the separately deployed issuance service.');
   await startIssuer({demo:true,secret:issuerSecret,port:issuerPort,origin});
 }
-async function issuer(path,body){const r=await fetch(issuerOrigin+'/internal'+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+issuerSecret},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});const data=await r.json();if(!r.ok)throw Object.assign(new Error(data.error||'Issuer unavailable.'),{status:503});return data;}
+async function issuer(path,body){const r=await fetch(issuerOrigin+'/internal'+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+issuerSecret},body:JSON.stringify(body),signal:AbortSignal.timeout(75000)});let data;try{data=await r.json();}catch{throw Object.assign(new Error('The invitation service is starting. Please retry in a moment.'),{status:503});}if(!r.ok)throw Object.assign(new Error(data.error||'Issuer unavailable.'),{status:503});return data;}
 await connect(demo);
 const db=store(demo),suite=RSABSSA.SHA384.PSS.Randomized();
 // Accelerated clock only for isolated automated tests, never a deployment setting.
@@ -43,6 +44,7 @@ app.use('/api',rateLimit({windowMs:60000,limit:120,keyGenerator:req=>createHmac(
 app.use('/api',(req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});if(req.method!=='GET'&&req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({error:'Origin not allowed.'});next();});
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
+installEvaluator(app,{issuer,suite,safe,limiterKey:req=>createHmac('sha256',abuseSecret).update(ipKeyGenerator(req.ip||'127.0.0.1')).digest('hex')});
 function auth(req,res,next){const token=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('cp_session='))?.slice(11);const session=token&&sessions.get(token);if(!session||session.expiresAt<Date.now()){if(token)sessions.delete(token);return res.status(401).json({error:'Administrator sign-in required.'});}if(session.role!=='admin')return res.status(403).json({error:'Administrator access only.'});req.sessionToken=token;next();}
 const publicEvent=e=>({id:e._id,name:e.name,description:e.description,date:e.date,open:e.open,demo:!!e.demo});
 app.get('/api/config',(req,res)=>res.json({demo,privacyMinimum:MINIMUM,releaseDelayMinutes:15,issuerOrigin,separateIssuer:production?'separate-origin':'local-preview',reportPolicy:'sealed-event-reports'}));

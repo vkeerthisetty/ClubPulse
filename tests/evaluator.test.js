@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {RSABSSA} from '@cloudflare/blindrsa-ts';
+const base='http://localhost:3031',enc=b=>Buffer.from(b).toString('base64');
+test('evaluator roles use isolated memory, blind tokens and protected real administration',async t=>{
+ const child=spawn(process.execPath,['server/index.js'],{env:{...process.env,PORT:'3031',ISSUER_PORT:'3032',PUBLIC_ORIGIN:base,ISSUER_URL:'',DEMO_MODE:'true',NODE_ENV:'test'},stdio:['ignore','pipe','pipe']});
+ let output='';child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);t.after(()=>child.kill());
+ for(let i=0;i<160;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));if(i===159)throw new Error(output);}
+ async function call(path,{body,token,cookie,method=body?'POST':'GET',endpoint=base}={}){const r=await fetch(endpoint+path,{method,headers:{'Content-Type':'application/json',...(token?{'X-Evaluator-Session':token}:{}),...(cookie?{Cookie:cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json(),headers:r.headers};}
+ const first=await call('/api/evaluator/session',{body:{name:'Evaluator workshop'}});assert.equal(first.status,201);const {token,event,code}=first.data,id=event.id;
+ assert.equal(first.headers.get('set-cookie'),null);assert.equal(event.open,true);assert.equal(first.data.data.count,null);assert.ok(!JSON.stringify(first.data).includes('privateJwk'));
+ assert.equal((await call('/api/statistics',{token})).status,401);assert.equal((await call('/api/events',{token,body:{name:'Not authorised',date:'2026-10-26'}})).status,401);
+ const other=await call('/api/evaluator/session',{body:{name:'Other reviewer'}});assert.equal(other.status,201);assert.notEqual(other.data.token,token);
+ assert.equal((await call('/api/evaluator/session?event='+id,{token:other.data.token})).status,404);
+ assert.equal((await call('/api/evaluator/events/'+id+'/examples',{token:other.data.token,body:{}})).status,409);
+ const config=(await call('/api/config')).data,jwk=(await call('/api/evaluator/events/'+id+'/key')).data;
+ const suite=RSABSSA.SHA384.PSS.Randomized(),key=await crypto.subtle.importKey('jwk',jwk,{name:'RSA-PSS',hash:'SHA-384'},true,['verify']);
+ const message=suite.prepare(crypto.getRandomValues(new Uint8Array(32))),blind=await suite.blind(key,message);
+ const issuePath='/api/sandbox/events/'+id+'/issue',issueBody={code,blinded:enc(blind.blindedMsg)};
+ assert.equal((await call(issuePath,{endpoint:config.issuerOrigin,body:issueBody,cookie:'cp_session=fake'})).status,400);
+ const issued=await call(issuePath,{endpoint:config.issuerOrigin,body:issueBody});assert.equal(issued.status,200);
+ const signature=await suite.finalize(key,message,Buffer.from(issued.data.signature,'base64'),blind.inv),payload={eventId:id,rating:4,category:'Content',comment:'Evaluator test response, not participant data.',message:enc(message),signature:enc(signature)};
+ assert.equal((await call('/api/evaluator/feedback',{body:payload,token})).status,400);
+ assert.equal((await call('/api/evaluator/feedback',{body:payload,cookie:'cp_session=fake'})).status,400);
+ assert.equal((await call('/api/evaluator/feedback',{body:{...payload,email:'not-allowed'}})).status,400);
+ assert.equal((await call('/api/evaluator/feedback',{body:{...payload,signature:enc(new Uint8Array(256))}})).status,403);
+ assert.equal((await call('/api/feedback',{body:payload})).status,400);
+ assert.equal((await call('/api/evaluator/feedback',{body:payload})).status,201);
+ assert.equal((await call('/api/evaluator/feedback',{body:payload})).status,409);
+ const pending=await call('/api/evaluator/session?event='+id,{token});assert.equal(pending.data.count,null);assert.equal(pending.data.feedback.length,0);
+ assert.equal((await call('/api/evaluator/events/'+id+'/seal',{token,body:{}})).status,409);
+ assert.equal((await call('/api/evaluator/events/'+id+'/examples',{token,body:{}})).status,200);
+ assert.equal((await call('/api/evaluator/events/'+id+'/examples',{token,body:{}})).status,409);
+ const sealed=await call('/api/evaluator/events/'+id+'/seal',{token,body:{}});assert.equal(sealed.status,200);assert.equal(sealed.data.practiceCooldownSkipped,true);
+ const report=(await call('/api/evaluator/session?event='+id,{token})).data;assert.equal(report.count,5);assert.equal(report.average,4);assert.equal(report.feedback.length,5);assert.ok(report.distribution.every(c=>c.suppressed));assert.deepEqual(Object.keys(report.feedback[0]).sort(),['comment','demo','eventId']);
+ assert.equal((await call('/api/evaluator/events/'+id+'/seal',{token,body:{}})).status,409);
+ assert.equal((await call('/api/evaluator/events/'+id+'/invites',{token,body:{count:1}})).status,409);
+ const created=await call('/api/evaluator/events',{token,body:{name:'Created as practice organiser',date:'2026-10-26',description:'Temporary only'}});assert.equal(created.status,201);
+ assert.equal((await call('/api/evaluator/events',{token,body:{name:'Too many',date:'2026-10-26'}})).status,400);
+ assert.equal((await call('/api/events')).data.length,0);
+ const login=await call('/api/login',{body:{email:'admin@clubpulse.local',password:'local-preview-only'}}),cookie=login.headers.get('set-cookie').split(';')[0];
+ assert.equal((await call('/api/statistics',{cookie})).data.count,null);assert.equal((await call('/api/export',{cookie})).status,403);
+ assert.equal((await call('/api/evaluator/session',{token,method:'DELETE'})).status,200);assert.equal((await call('/api/evaluator/session',{token})).status,410);assert.equal((await call('/api/evaluator/events/'+created.data.event.id+'/key')).status,410);
+ assert.equal((await call('/api/evaluator/session',{token:other.data.token})).status,200);
+});
