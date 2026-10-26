@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import OrbitArtwork from './OrbitArtwork.jsx';
+import LucidHero,{RulerIndex} from './LucidHero.jsx';
 
 
 
@@ -9,7 +9,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
   const openEvent = id => { location.hash = 'submit/' + id; onNavigate('submit/' + id); };
 
-  return <div className="front-page">
+  return <div className={"front-page "+(proof?"proof-page":"dream-home")}>
 
     <header className="front-header"><Logo/><nav aria-label="Main navigation">
 
@@ -20,6 +20,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
       <a href="#demo" onClick={()=>onNavigate('demo')}>Demo report</a>
 
       <a className="backstage-link" href="#admin/login" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="arrow" size={17}/></a>
+      <a className="header-entry" href="#participant" onClick={()=>onNavigate('submit')}>Give feedback <Icon name="arrow" size={16}/></a>
 
     </nav></header>
 
@@ -49,19 +50,11 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
     </> : <>
 
-      <section className="front-hero"><OrbitArtwork/>
+      <LucidHero onNavigate={onNavigate} Icon={Icon}/>
 
-        <span className="eyebrow">ANONYMOUS FEEDBACK FOR CLUB EVENTS</span>
-
-        <h1><span className="hero-first">Say it <em>straight.</em></span><span className="hero-second">Make it <mark>better.</mark></span></h1>
-
-        <p>Sign in with your event code. No names on your feedback. Tell your organisers what worked, what didn’t, and what the next event could do better. <a href="#proof" onClick={()=>onNavigate('proof')}>See how anonymity works <Icon name="arrow" size={22}/></a></p>
-
-      </section>
-
-      <section className="access-entrances" aria-label="Choose your access"><div><span className="eyebrow">FOR ATTENDEES</span><h2>PARTICIPANT SIGN-IN</h2><p>Your event code opens anonymous feedback. No email or password required.</p><button className="primary" onClick={()=>onNavigate('submit')}>Enter with event code <Icon name="arrow" size={18}/></button></div><div><span className="eyebrow">FOR AUTHORISED ORGANISERS</span><h2>ADMINISTRATOR SIGN-IN</h2><p>Your club credentials open event management, invitations and protected reports.</p><button className="button" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="lock" size={18}/></button></div></section>
+      <section id="entry" className="access-entrances" aria-label="Choose your access"><div><span className="eyebrow">FOR ATTENDEES</span><h2>PARTICIPANT SIGN-IN</h2><p>Your event code opens anonymous feedback. No email or password required.</p><button className="primary" onClick={()=>onNavigate('submit')}>Enter with event code <Icon name="arrow" size={18}/></button></div><div><span className="eyebrow">FOR AUTHORISED ORGANISERS</span><h2>ADMINISTRATOR SIGN-IN</h2><p>Your club credentials open event management, invitations and protected reports.</p><button className="button" onClick={()=>onNavigate('login')}>Administrator sign-in <Icon name="lock" size={18}/></button></div></section>
       <section className="reviewer-demo"><div><span className="eyebrow">VISITING FOR A PRODUCT REVIEW?</span><h2>A look behind the scenes.</h2><p>Open a read-only dashboard with four sample events, twenty synthetic responses and the privacy controls explained in context. No account or event code required.</p></div><button className="primary" onClick={()=>onNavigate('demo')}>Explore the guided demo <Icon name="arrow" size={18}/></button></section>
-      <section className="front-steps" aria-label="How it works">{[
+      <section id="how-it-works" className="front-steps" aria-label="How it works">{[
 
         ['1','Pick your event','Find your workshop below. Your organiser gives you a one-use invitation code.'],
 
@@ -71,7 +64,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
 
       ].map(([n,t,p])=><article key={n}><span>{n}</span><h2>{t}</h2><p>{p}</p></article>)}</section>
 
-      <section className="front-events" aria-labelledby="open-events"><div className="section-rule"><h2 id="open-events">The event directory</h2><span/>{config.demo&&<small>LOCAL PREVIEW</small>}</div>
+      <section id="event-directory" className="front-events" aria-labelledby="open-events"><div className="section-rule"><h2 id="open-events">The event directory</h2><span/>{config.demo&&<small>LOCAL PREVIEW</small>}</div>
 
       {open.length ? <div className="ticket-list">{open.map(event=><article className="event-ticket" key={event.id}>
 
@@ -92,6 +85,7 @@ export default function Front({events, config, onNavigate, Logo, Icon, proof}) {
     </main>
 
     <footer className="front-footer"><span>ClubPulse · anonymous by design</span><div><a href="#proof" onClick={()=>onNavigate('proof')}>See exactly what we store <Icon name="arrow" size={14}/></a><a href="#admin/login" onClick={()=>onNavigate('login')}>Administrator sign-in</a></div></footer>
+    {!proof&&<RulerIndex onNavigate={onNavigate}/>}
 
   </div>;
 

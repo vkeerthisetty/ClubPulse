@@ -18,7 +18,7 @@
 
 ## Limits and follow-up
 
-- Local tests do not prove that production service credentials match. Run the administrator connection check on the deployed system to verify that configuration. Previous production event provisioning had failed and cannot be declared repaired without this check.
+- Resolved in subsequent live verification: the owner signed in, all four connection checks passed, and event creation, invitation exchange, revocation, anonymous submission, closing, protected reporting and CSV export succeeded. See VERIFICATION_2026-10-26.md for the evidence and retained system-test record.
 - Free Render instances sleep. A cold start was observed during this audit.
 - Sample data is illustrative, never evidence of real users or adoption.
 - Reports deliberately suppress small groups. They do not offer individual tracking, arbitrary date slices, or identity-linked sentiment analysis.

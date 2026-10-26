@@ -3,7 +3,7 @@ import './dashboard.css';
 import './insights.css';
 import {ActionBoard,CompareReports,MetricGuide,downloadBrief} from './ReportStudio.jsx';
 const phases=['Collect privately','Close the event','15-minute cooldown','Seal the report'];
-export default function Dashboard({data,events,event,onEvent,onNavigate,Icon,onRefresh}){
+export default function Dashboard({loading=false,data,events,event,onEvent,onNavigate,Icon,onRefresh}){
   const [view,setView]=useState('overview');
   const [units,setUnits]=useState('count'),[refreshing,setRefreshing]=useState(false);
   const [tab,setTab]=useState('takeaways'),[copied,setCopied]=useState(false),[plan,setPlan]=useState('');
@@ -25,7 +25,7 @@ export default function Dashboard({data,events,event,onEvent,onNavigate,Icon,onR
     {label:'Written comments',state:comments.length?'Released':'Protected',released:!!comments.length,note:'Detached from rating, topic and submission time'}
   ];
   async function copy(){const text=published?`${event?events.find(e=>e.id===event)?.name:'ClubPulse event reports'}\n${count} responses in ${reports.length} sealed report(s).\nAverage ${score}/5. Positive ${positive==null?'Protected':positive+'%'}.\nSmall breakdowns protected. No individual timestamps.\n${plan?'Next event action: '+plan:''}`:'No released report is available yet.';try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1800);}catch{setCopied(false);}}
-  return <div className="report-dashboard" data-view={view}>
+  return <div className="report-dashboard" data-view={view} data-loading={loading?'true':undefined} aria-busy={loading}><p className="scope-loading" role="status">Updating the selected report…</p>
     <div className="report-toolbar"><label>REPORT SCOPE<select value={event} onChange={e=>onEvent(e.target.value)}><option value="">All sealed reports</option>{events.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label><span><Icon name="shield" size={15}/> Fixed cohorts. No live individual tracking.</span><button className="text-button" onClick={copy} disabled={!published}>{copied?'Copied to clipboard':'Copy the takeaways'}<Icon name="arrow" size={15}/></button></div>
     <nav className="studio-navigation" aria-label="Report views">{[['overview','01','Overview'],['analysis','02','Analysis'],['events','03','Events & comparison'],['actions','04','Action studio']].map(([id,n,label])=><button key={id} aria-pressed={view===id} onClick={()=>setView(id)}><span>{n}</span>{label}</button>)}<button disabled={refreshing} onClick={async()=>{setRefreshing(true);try{await onRefresh();}finally{setRefreshing(false);}}}>{refreshing?'Refreshing...':'Refresh'}</button><button disabled={!published} onClick={()=>downloadBrief(data,events,event)}>Download brief <Icon name="download" size={14}/></button></nav><div className="report-topline"><span>{view==='overview'?'YOUR EVENT OBSERVATORY':view==='analysis'?'EXPLORE RELEASED EVIDENCE':view==='events'?'THE EVENT REGISTER':'FROM LISTENING TO DOING'}</span><span>{reports.some(e=>e.demo)?'DEMONSTRATION DATA':'SEALED REPORTS'}</span></div>
     <section className="report-hero-grid" id="report-overview">
@@ -37,7 +37,7 @@ export default function Dashboard({data,events,event,onEvent,onNavigate,Icon,onR
       <header><span className="report-label">EXECUTIVE READOUT</span><h2 id="readout-title">What the room is telling you.</h2></header>
       <div className="readout-grid">
         <article><span>01 / SIGNAL</span><strong>{published?status:'REPORT NOT RELEASED'}</strong><p>{published?`${count} responses across ${reports.length} sealed ${reports.length===1?'event':'events'} produced an overall score of ${score} out of 5.`:'The cohort remains private until every release condition is met.'}</p></article>
-        <article><span>02 / KEEP</span><strong>{score>=4?'Protect what already works.':score>=3?'Keep the strongest moments.':'Rebuild the core experience.'}</strong><p>{score>=4?'Retain the parts participants already value before changing the programme.':'Read the released comments before deciding what should stay.'}</p></article>
+        <article><span>02 / KEEP</span><strong>{!published?'Wait for released evidence.':score>=4?'Protect what already works.':score>=3?'Keep the strongest moments.':'Rebuild the core experience.'}</strong><p>{!published?'No conclusion can be drawn while this cohort is protected.':score>=4?'Retain the parts participants already value before changing the programme.':'Read the released comments before deciding what should stay.'}</p></article>
         <article><span>03 / NEXT MOVE</span><strong>{leadTheme?.title||'Review the released evidence.'}</strong><p>{leadTheme?`${leadTheme.mentions} released ${leadTheme.mentions===1?'comment points':'comments point'} here. ${leadTheme.action}`:'No recurring phrase has enough released comment evidence yet.'}</p></article>
         <article className="readout-privacy"><span>04 / CONFIDENCE</span><strong>{published?'Useful, intentionally limited.':'Privacy takes priority.'}</strong><p>{published?'The overall result is available. Smaller cuts remain hidden whenever releasing them could expose a tiny group.':'No provisional numbers appear while feedback is still arriving.'}</p></article>
       </div>

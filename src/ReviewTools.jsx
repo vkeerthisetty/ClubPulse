@@ -9,9 +9,10 @@ export function downloadInvitationCards(event,codes){
   const url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='clubpulse-private-invitation-cards.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
-export function CommentExplorer({comments,events,Icon}){
+export function CommentExplorer({comments,events,Icon,loading=false}){
   const [search,setSearch]=useState(''),[limit,setLimit]=useState(6);
   useEffect(()=>setLimit(6),[search,comments]);
+  if(loading)return <section className="comment-explorer" id="sample-comments" aria-busy="true"><p role="status">Loading comments for the selected report…</p></section>;
   const rows=comments.filter(row=>row.comment.toLowerCase().includes(search.trim().toLowerCase()));
   return <section className="comment-explorer" id="sample-comments">
     <header><div><span className="eyebrow">THE LISTENING ROOM</span><h2>THE WORDS BEHIND THE REPORT.</h2></div><label>Search released comments<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Try mentor, schedule or briefing"/></label></header>

@@ -9,6 +9,7 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  for(let i=0;i<120;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));if(i===119)throw new Error(output);}
  let cookie='';async function call(path,body,auth=false,method=body?'POST':'GET',endpoint=base){const r=await fetch(endpoint+path,{method,headers:{'Content-Type':'application/json',...(auth?{cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});const text=await r.text();let data;try{data=JSON.parse(text);}catch{}return{r,data,text};}
  assert.equal((await call('/api/statistics')).r.status,401);
+ assert.equal((await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://untrusted.invalid'},body:'{}'})).status,403);
  assert.equal((await call('/api/diagnostics')).r.status,401);
  const login=await call('/api/login',{email:'admin@clubpulse.local',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
  const config=(await call('/api/config')).data;assert.equal(config.issuerOrigin,'http://localhost:3012');
@@ -44,11 +45,12 @@ test('separate issuance, credential-free collection and sealed privacy reports',
   assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)})).r.status,404);
   if(i===0)assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},true,'POST',config.issuerOrigin)).r.status,400);
   const issue=await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},false,'POST',config.issuerOrigin);assert.equal(issue.r.status,200,issue.text);
+  if(i===0){const alternate=await suite.blind(key,message);assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(alternate.blindedMsg)},false,'POST',config.issuerOrigin)).r.status,409);}
   if(i===0){assert.equal((await call('/api/events/'+id+'/revoke',{codes:[invites[i]]},true)).r.status,200);assert.equal((await call('/api/events/'+id+'/issue',{code:invites[i],blinded:enc(blind.blindedMsg)},false,'POST',config.issuerOrigin)).r.status,200);}
   if(i===0){const denied=await fetch(base+'/api/statistics',{headers:{Authorization:'Bearer '+issue.data.signature}});assert.equal(denied.status,401);}
   const sig=await suite.finalize(key,message,Buffer.from(issue.data.signature,'base64'),blind.inv);
   const payload={eventId:id,rating:[5,4,4,3,5][i],category:i%2?'Delivery':'Content',comment:'Released comment '+i,message:enc(message),signature:enc(sig)};
-  if(i===0){first=payload;assert.equal((await call('/api/feedback',payload,true)).r.status,400);assert.equal((await call('/api/feedback',{...payload,code:invites[i]})).r.status,400);assert.equal((await call('/api/feedback',{...payload,signature:enc(new Uint8Array(256))})).r.status,403);}
+  if(i===0){first=payload;assert.equal((await call('/api/feedback',payload,true)).r.status,400);assert.equal((await call('/api/feedback',{...payload,code:invites[i]})).r.status,400);assert.equal((await call('/api/feedback',{...payload,signature:enc(new Uint8Array(256))})).r.status,403);for(const field of ['email','userId','timestamp','ipAddress'])assert.equal((await call('/api/feedback',{...payload,[field]:'forbidden metadata'})).r.status,400);assert.equal((await fetch(base+'/api/feedback',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer participant'},body:JSON.stringify(payload)})).status,400);}
   assert.equal((await call('/api/feedback',payload)).r.status,201);
   const protectedStats=(await call('/api/statistics?event='+id,null,true)).data;assert.equal(protectedStats.count,null);assert.equal(protectedStats.feedback.length,0);assert.equal(protectedStats.events[0].count,null);
  }
@@ -58,8 +60,10 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  assert.equal((await call('/api/statistics',null,true)).data.count,null);
  await new Promise(r=>setTimeout(r,1100));
  const released=(await call('/api/statistics',null,true)).data;assert.equal(released.count,5);assert.equal(released.average,4.2);assert.equal(released.positive,null);assert.ok(released.distribution.every(c=>c.count===null));assert.equal(released.events[0].reportState,'released');
+ const scoped=(await call('/api/statistics?event='+id,null,true)).data;assert.equal(scoped.scope,id);assert.equal(scoped.count,5);
  assert.deepEqual(Object.keys(released.feedback[0]).sort(),['comment','demo','eventId']);
  const privateShowcase=await call('/api/showcase?event='+id);assert.equal(privateShowcase.data.count,null);assert.equal(privateShowcase.data.feedback.length,0);
+ assert.equal(privateShowcase.data.scope,id);
  const repeat=(await call('/api/statistics',null,true)).data;assert.deepEqual(released.feedback,repeat.feedback);
  assert.equal((await call('/api/events/'+id,{open:true},true,'PATCH')).r.status,409);
  assert.equal((await call('/api/events/'+id+'/details',{name:'Changed sealed report',date:'2026-10-25'},true,'PATCH')).r.status,409);
