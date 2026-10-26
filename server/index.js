@@ -75,8 +75,10 @@ async function releasedEvents(){
 }
 function state(e){return e.report?'released':e.open?'collecting':e.releaseAt>Date.now()?'cooldown':'protected';}
 app.get('/api/showcase',safe(async(req,res)=>{
+  if(!validateReportQuery(req.query))return res.status(400).json({error:'Select a whole event only.'});
   const events=(await db.events()).filter(e=>e.demo&&e.report);
-  res.json({...combineReports(events),events:events.map(e=>({...publicEvent(e),count:e.report.count,reportState:'released',report:{count:e.report.count,average:e.report.average,positive:e.report.positive,demo:true,version:e.report.version}})),privacy:{minimum:MINIMUM,delayMinutes:15,immutable:true,noTimestamps:true,cookiesOmitted:true,smallCellsSuppressed:true,export:'aggregate-only'},demo:true,readOnly:true});
+  const selected=events.filter(e=>!req.query.event||e._id===req.query.event);
+  res.json({...combineReports(selected),events:events.map(e=>({...publicEvent(e),count:e.report.count,reportState:'released',report:{count:e.report.count,average:e.report.average,positive:e.report.positive,demo:true,version:e.report.version}})),privacy:{minimum:MINIMUM,delayMinutes:15,immutable:true,noTimestamps:true,cookiesOmitted:true,smallCellsSuppressed:true,export:'aggregate-only'},demo:true,readOnly:true});
 }));
 app.get('/api/statistics',auth,safe(async(req,res)=>{
   if(!validateReportQuery(req.query))return res.status(400).json({error:'Only whole-event selection is supported. Rating, topic, search and submission-date slices are disabled for privacy.'});
@@ -88,6 +90,12 @@ app.get('/api/export',auth,safe(async(req,res)=>{
   const events=(await releasedEvents()).filter(e=>(!req.query.event||e._id===req.query.event)&&e.report);
   if(!events.length)return res.status(403).json({error:'No privacy-eligible reports are available to export.'});
   res.setHeader('Content-Disposition','attachment; filename="clubpulse-sealed-reports.csv"');res.type('text/csv').send(reportCsv(events));
+}));
+app.get('/api/diagnostics',auth,safe(async(req,res)=>{
+  let database=false,issuance=false;
+  try{await db.events();database=true;}catch{}
+  try{const result=await issuer('/check',{});issuance=result.ok===true&&result.role==='issuer';}catch{}
+  res.json({database,issuance,separateOrigin:new URL(origin).origin!==new URL(issuerOrigin).origin,https:production,preview:demo});
 }));
 app.get('/api/health',(req,res)=>res.json({ok:true,demo,role:'collector'}));
 app.use('/api',(req,res)=>res.status(404).json({error:'API route not found.'}));

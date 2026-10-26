@@ -9,8 +9,11 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  for(let i=0;i<120;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));if(i===119)throw new Error(output);}
  let cookie='';async function call(path,body,auth=false,method=body?'POST':'GET',endpoint=base){const r=await fetch(endpoint+path,{method,headers:{'Content-Type':'application/json',...(auth?{cookie}:{})},...(body?{body:JSON.stringify(body)}:{})});const text=await r.text();let data;try{data=JSON.parse(text);}catch{}return{r,data,text};}
  assert.equal((await call('/api/statistics')).r.status,401);
+ assert.equal((await call('/api/diagnostics')).r.status,401);
  const login=await call('/api/login',{email:'admin@clubpulse.local',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
  const config=(await call('/api/config')).data;assert.equal(config.issuerOrigin,'http://localhost:3012');
+ const diagnostics=await call('/api/diagnostics',null,true);assert.equal(diagnostics.r.status,200);assert.equal(diagnostics.data.database,true);assert.equal(diagnostics.data.issuance,true);assert.equal(diagnostics.data.separateOrigin,true);
+ assert.equal((await call('/api/showcase?rating=5')).r.status,400);
  const showcase=await call('/api/showcase');assert.equal(showcase.r.status,200);assert.equal(showcase.data.readOnly,true);assert.equal(showcase.data.count,null);assert.ok(showcase.data.events.every(e=>e.demo&&e.report));
  const preflight=await fetch(config.issuerOrigin+'/api/events/example/issue',{method:'OPTIONS',headers:{Origin:base,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),base);assert.equal(preflight.headers.get('access-control-allow-credentials'),null);
  assert.equal((await fetch(config.issuerOrigin+'/api/events/example/issue',{method:'OPTIONS',headers:{Origin:'https://untrusted.invalid'}})).status,403);
@@ -46,6 +49,7 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  await new Promise(r=>setTimeout(r,1100));
  const released=(await call('/api/statistics',null,true)).data;assert.equal(released.count,5);assert.equal(released.average,4.2);assert.equal(released.positive,null);assert.ok(released.distribution.every(c=>c.count===null));assert.equal(released.events[0].reportState,'released');
  assert.deepEqual(Object.keys(released.feedback[0]).sort(),['comment','demo','eventId']);
+ const privateShowcase=await call('/api/showcase?event='+id);assert.equal(privateShowcase.data.count,null);assert.equal(privateShowcase.data.feedback.length,0);
  const repeat=(await call('/api/statistics',null,true)).data;assert.deepEqual(released.feedback,repeat.feedback);
  assert.equal((await call('/api/events/'+id,{open:true},true,'PATCH')).r.status,409);
  const csv=await call('/api/export',null,true);assert.equal(csv.r.status,200);assert.ok(csv.text.includes('Private workshop'));assert.ok(!csv.text.includes('Released comment'));assert.ok(!csv.text.includes('message'));

@@ -36,6 +36,7 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
   app.use('/api',rateLimit({windowMs:60000,limit:20,keyGenerator:req=>createHmac('sha256',abuseSecret).update(ipKeyGenerator(req.ip||'127.0.0.1')).digest('hex'),validate:{keyGeneratorIpFallback:false}}));
   function internal(req,res,next){const got=Buffer.from(req.headers.authorization?.replace(/^Bearer /,'')||'');const expected=Buffer.from(secret);if(got.length!==expected.length||!timingSafeEqual(got,expected))return res.status(401).json({error:'Service authentication required.'});next();}
   const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
+  app.post('/internal/check',internal,(req,res)=>res.json({ok:true,role:'issuer'}));
   app.post('/internal/events',internal,safe(async(req,res)=>{
     const {id}=req.body;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))return res.status(400).json({error:'Invalid event ID.'});
     if(await getEvent(id))return res.status(409).json({error:'Event already provisioned.'});
