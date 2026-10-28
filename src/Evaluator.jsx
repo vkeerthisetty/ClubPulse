@@ -3,6 +3,7 @@ import Dashboard from './Dashboard.jsx';
 import {CommentExplorer} from './ReviewTools.jsx';
 import './evaluator.css';
 import './practice-entry.css';
+import {requestJson} from './http.js';
 
 export default function Evaluator({config,events,FeedbackForm,Logo,Icon,onNavigate}){
  const source=location.hash.split('/')[1]||'default',storageKey='cp_evaluator_v1_'+source;
@@ -10,13 +11,12 @@ export default function Evaluator({config,events,FeedbackForm,Logo,Icon,onNaviga
  const active=meta&&data?.events.find(e=>e.id===meta.activeId),code=meta?.codes[meta.activeId]||'';
  function persist(value){setMeta(value);try{sessionStorage.setItem(storageKey,JSON.stringify(value));}catch{}}
  async function request(path,body,token=meta?.token,method=body?'POST':'GET'){
-  const response=await fetch('/api/evaluator'+path,{method,credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...(token?{'X-Evaluator-Session':token}:{})},...(body?{body:JSON.stringify(body)}:{})});
-  const result=await response.json();if(!response.ok)throw Object.assign(new Error(result.error||'Practice request failed.'),{status:response.status});return result;
+  return requestJson('/api/evaluator'+path,{method,credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json',...(token?{'X-Evaluator-Session':token}:{})},...(body?{body:JSON.stringify(body)}:{})});
  }
  async function refresh(id=meta?.activeId,token=meta?.token){const next=await request('/session?event='+encodeURIComponent(id||''),undefined,token);setData(next);return next;}
  async function start(){setBusy(true);setError('');try{const name=events.find(e=>e.id===source)?.name||'24-Hour Hackathon';const result=await request('/session',{name},null);persist({token:result.token,activeId:result.event.id,codes:{[result.event.id]:result.code},freshCodes:{[result.event.id]:true},submitted:[]});setData(result.data);setView(source==='organiser'?'organiser':'participant');return true;}catch(err){setError(err.message);return false;}finally{setBusy(false);}}
  useEffect(()=>{let cancelled=false;(async()=>{try{let saved;try{saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch{}if(saved?.token&&saved.activeId&&saved.codes){const next=await request('/session?event='+encodeURIComponent(saved.activeId),undefined,saved.token);if(!cancelled){setMeta({...saved,submitted:Array.isArray(saved.submitted)?saved.submitted:[]});setData(next);}}else if(!cancelled){await start();}}catch(err){if(!cancelled){if(err.status===410){try{sessionStorage.removeItem(storageKey);}catch{}if(await start())setNotice('Your previous practice expired. A fresh temporary session is ready.');}else setError(err.message);}}finally{if(!cancelled)setBusy(false);}})();return()=>{cancelled=true;};},[storageKey]);
- async function act(fn){setBusy(true);setError('');setNotice('');try{await fn();}catch(err){setError(err.message);}finally{setBusy(false);}}
+ async function act(fn){setBusy(true);setError('');setNotice('');try{await fn();}catch(err){if(err.status===410){try{sessionStorage.removeItem(storageKey);}catch{}setData(null);setMeta(null);}setError(err.message);}finally{setBusy(false);}}
  function chooseRole(key){setView(key);setError('');if(key==='report'&&!active?.report){const completed=data.events.find(e=>e.report);if(completed)act(()=>refresh(completed.id));}}
  async function submitted(){persist({...meta,submitted:[...new Set([...meta.submitted,meta.activeId])],freshCodes:{...meta.freshCodes,[meta.activeId]:false}});await refresh();}
  async function fresh(){await act(async()=>{if(meta)await request('/session',undefined,meta.token,'DELETE').catch(()=>{});try{sessionStorage.removeItem(storageKey);}catch{}setData(null);setMeta(null);await start();});}

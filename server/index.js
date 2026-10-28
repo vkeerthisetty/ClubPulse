@@ -11,7 +11,7 @@ import {installEvaluator} from './evaluator.js';
 const production=process.env.NODE_ENV==='production';
 const demo=process.env.DEMO_MODE==='true'||(!process.env.MONGODB_URI&&!production);
 if(production&&demo)throw new Error('Demo mode forbidden in production.');
-const email=process.env.ADMIN_EMAIL||(demo?'admin@clubpulse.local':'');
+const email=(process.env.ADMIN_EMAIL||(demo?'admin@clubpulse.local':'')).trim().toLowerCase();
 const password=process.env.ADMIN_PASSWORD||(demo?'local-preview-only':'');
 const secret=process.env.SESSION_SECRET||(demo?randomBytes(32).toString('hex'):'');
 if(!email||password.length<12||secret.length<32)throw new Error('Configure strong admin credentials and SESSION_SECRET.');
@@ -48,7 +48,7 @@ installEvaluator(app,{issuer,suite,safe,limiterKey:req=>createHmac('sha256',abus
 function auth(req,res,next){const token=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('cp_session='))?.slice(11);const session=token&&sessions.get(token);if(!session||session.expiresAt<Date.now()){if(token)sessions.delete(token);return res.status(401).json({error:'Administrator sign-in required.'});}if(session.role!=='admin')return res.status(403).json({error:'Administrator access only.'});req.sessionToken=token;next();}
 const publicEvent=e=>({id:e._id,name:e.name,description:e.description,date:e.date,open:e.open,demo:!!e.demo});
 app.get('/api/config',(req,res)=>res.json({demo,privacyMinimum:MINIMUM,releaseDelayMinutes:15,issuerOrigin,separateIssuer:production?'separate-origin':'local-preview',reportPolicy:'sealed-event-reports'}));
-app.post('/api/login',rateLimit({windowMs:15*60000,limit:10}), (req,res)=>{const got=scryptSync(String(req.body.password||'').slice(0,200),secret,32),expected=scryptSync(password,secret,32);if(req.body.email!==email||!timingSafeEqual(got,expected))return res.status(401).json({error:'Email or password is incorrect.'});for(const [k,v] of sessions)if(v.expiresAt<Date.now())sessions.delete(k);const token=randomBytes(32).toString('hex');sessions.set(token,{role:'admin',expiresAt:Date.now()+8*3600000});res.setHeader('Set-Cookie',`cp_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=28800${production?'; Secure':''}`);res.json({email,role:'admin'});});
+app.post('/api/login',rateLimit({windowMs:15*60000,limit:10,handler:(_req,res)=>res.status(429).json({error:'Too many sign-in attempts. Wait 15 minutes before trying again.'})}), (req,res)=>{const got=scryptSync(String(req.body.password||'').slice(0,200),secret,32),expected=scryptSync(password,secret,32);if(String(req.body.email||'').trim().toLowerCase()!==email||!timingSafeEqual(got,expected))return res.status(401).json({error:'Email or password is incorrect.'});for(const [k,v] of sessions)if(v.expiresAt<Date.now())sessions.delete(k);const token=randomBytes(32).toString('hex');sessions.set(token,{role:'admin',expiresAt:Date.now()+8*3600000});res.setHeader('Set-Cookie',`cp_session=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=28800${production?'; Secure':''}`);res.json({email,role:'admin'});});
 app.get('/api/session',auth,(req,res)=>res.json({email,role:'admin'}));
 app.post('/api/logout',auth,(req,res)=>{sessions.delete(req.sessionToken);res.setHeader('Set-Cookie','cp_session=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0');res.json({ok:true});});
 app.get('/api/events',safe(async(req,res)=>res.json((await db.events()).map(publicEvent))));

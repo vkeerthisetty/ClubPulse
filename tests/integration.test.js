@@ -11,7 +11,7 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  assert.equal((await call('/api/statistics')).r.status,401);
  assert.equal((await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://untrusted.invalid'},body:'{}'})).status,403);
  assert.equal((await call('/api/diagnostics')).r.status,401);
- const login=await call('/api/login',{email:'admin@clubpulse.local',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
+ const login=await call('/api/login',{email:'  ADMIN@CLUBPULSE.LOCAL  ',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
  const config=(await call('/api/config')).data;assert.equal(config.issuerOrigin,'http://localhost:3012');
  const diagnostics=await call('/api/diagnostics',null,true);assert.equal(diagnostics.r.status,200);assert.equal(diagnostics.data.database,true);assert.equal(diagnostics.data.issuance,true);assert.equal(diagnostics.data.separateOrigin,true);
  assert.equal((await call('/api/showcase?rating=5')).r.status,400);

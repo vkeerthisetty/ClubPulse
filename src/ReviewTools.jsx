@@ -1,5 +1,6 @@
 import React,{useState,useEffect} from 'react';
 import './review-tools.css';
+import {requestJson} from './http.js';
 
 export function downloadInvitationCards(event,codes){
   const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -26,7 +27,7 @@ export function CommentExplorer({comments,events,Icon,loading=false}){
 
 export function ConnectionCheck(){
   const [result,setResult]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  async function check(){setBusy(true);setError('');setResult(null);try{const response=await fetch('/api/diagnostics',{cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data.error||'Connection check failed.');setResult(data);}catch(e){setError(e.message);}finally{setBusy(false);}}
+  async function check(){setBusy(true);setError('');setResult(null);try{setResult(await requestJson('/api/diagnostics',{credentials:'same-origin',cache:'no-store'}));}catch(e){setError(e.message);}finally{setBusy(false);}}
   const checks=result?[['Feedback database',result.database,'Can read the event store.'],['Invitation service',result.issuance,'The issuer accepts the service credential.'],['Separate service origins',result.separateOrigin,'Invitation exchange uses a different origin.'],['Production HTTPS configuration',result.https,'Both services are configured for HTTPS.']]:[];
   return <section className="connection-check panel"><header><div><span className="eyebrow">ADMINISTRATOR TOOLS</span><h2>CHECK BEFORE YOU INVITE.</h2><p>Check the services needed to create events and distribute invitations. No feedback or invitations are created by this check.</p></div><button className="primary" disabled={busy} onClick={check}>{busy?'Checking services...':'Run connection check'}</button></header>{error&&<p role="alert" className="error">{error}</p>}{result&&<><div className="connection-results">{checks.map(([label,ok,note])=><article key={label}><strong>{label}</strong><span>{ok?'Ready':result.preview&&label==='Production HTTPS configuration'?'Local preview':'Needs attention'}</span><p>{note}</p></article>)}</div>{!result.issuance&&<p role="status">The invitation service did not respond successfully. Check that it is awake, that its database is reachable, and that both services use the same issuer secret. Retry after the free service has started.</p>}</>}</section>;
 }
