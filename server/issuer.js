@@ -38,14 +38,19 @@ export async function startIssuer({demo,secret,port,origin,mongoUri,host='127.0.
   function internal(req,res,next){const got=Buffer.from(req.headers.authorization?.replace(/^Bearer /,'')||'');const expected=Buffer.from(secret);if(got.length!==expected.length||!timingSafeEqual(got,expected))return res.status(401).json({error:'Service authentication required.'});next();}
   const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
   installEvaluatorIssuer(app,{suite,internal,safe});
+  const provisioning=new Map();
   app.post('/internal/check',internal,(req,res)=>res.json({ok:true,role:'issuer'}));
   app.post('/internal/events',internal,safe(async(req,res)=>{
     const {id}=req.body;if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))return res.status(400).json({error:'Invalid event ID.'});
-    if(await getEvent(id))return res.status(409).json({error:'Event already provisioned.'});
-    const keys=await suite.generateKey({modulusLength:2048,publicExponent:new Uint8Array([1,0,1])});
-    const e={_id:id,open:true,publicJwk:await crypto.subtle.exportKey('jwk',keys.publicKey),privateJwk:await crypto.subtle.exportKey('jwk',keys.privateKey)};
-    if(demo)memoryEvents.set(id,e);else await Event.create(e);
-    res.status(201).json({publicJwk:e.publicJwk});
+    const existing=await getEvent(id);if(existing)return res.json({publicJwk:existing.publicJwk});
+    let pending=provisioning.get(id);
+    if(!pending){pending=(async()=>{
+      const keys=await suite.generateKey({modulusLength:2048,publicExponent:new Uint8Array([1,0,1])});
+      const e={_id:id,open:true,publicJwk:await crypto.subtle.exportKey('jwk',keys.publicKey),privateJwk:await crypto.subtle.exportKey('jwk',keys.privateKey)};
+      if(demo)memoryEvents.set(id,e);else{try{await Event.create(e);}catch(error){if(error.code!==11000)throw error;return (await getEvent(id)).publicJwk;}}
+      return e.publicJwk;
+    })();provisioning.set(id,pending);pending.finally(()=>provisioning.delete(id)).catch(()=>{});}
+    res.status(201).json({publicJwk:await pending});
   }));
   app.post('/internal/events/:id/state',internal,safe(async(req,res)=>{const e=await getEvent(req.params.id);if(!e)return res.status(404).json({error:'Event not found.'});if(typeof req.body.open!=='boolean')return res.status(400).json({error:'Invalid state.'});if(demo)e.open=req.body.open;else await Event.updateOne({_id:e._id},{$set:{open:req.body.open}});res.json({ok:true});}));
   app.post('/internal/events/:id/invites',internal,safe(async(req,res)=>{

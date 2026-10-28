@@ -1,6 +1,6 @@
 // Wake the issuer with safe reads before sending a non-idempotent operation.
 // Never automatically repeat invitation creation, event creation or sealing.
-export function createIssuerClient(origin,secret,{fetchImpl=fetch,wakeMs=60000,requestMs=20000,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+export function createIssuerClient(origin,secret,{fetchImpl=fetch,wakeMs=60000,requestMs=60000,pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
  let readyUntil=0,waking;
  async function ready(){
   if(Date.now()<readyUntil)return;

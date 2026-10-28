@@ -1,4 +1,4 @@
-import React, {useEffect,useState} from 'react';
+import React, {useEffect,useState,useRef} from 'react';
 
 import {createRoot} from 'react-dom/client';
 
@@ -45,11 +45,14 @@ function App(){
 
  const [config,setConfig]=useState(null),[user,setUser]=useState(null),[page,setPage]=useState(routePage()),[events,setEvents]=useState([]),[data,setData]=useState(null),[showcase,setShowcase]=useState(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
 
+ const creationRequest=useRef(null);const [creationSeconds,setCreationSeconds]=useState(0);
  const [demoEvent,setDemoEvent]=useState(''),[showPassword,setShowPassword]=useState(false),[starting,setStarting]=useState(true);
  const [event,setEvent]=useState(''),[period,setPeriod]=useState('30'),[rating,setRating]=useState(''),[category,setCategory]=useState(''),[search,setSearch]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[modal,setModal]=useState(null),[codes,setCodes]=useState([]);
 
  async function initialise(){setStarting(true);setError('');try{setConfig(await api('/config'));setEvents(await api('/events'));try{setUser(await api('/session'));}catch(e){if(e.status!==401)throw e;}}catch(e){setError(e.message);}finally{setLoading(false);setStarting(false);}}
  useEffect(()=>{initialise();const handler=()=>{setPage(routePage());setError('');};addEventListener('hashchange',handler);return()=>removeEventListener('hashchange',handler);},[]);
+
+ useEffect(()=>{setCreationSeconds(0);if(!busy||modal!=='event')return;const timer=setInterval(()=>setCreationSeconds(n=>n+1),1000);return()=>clearInterval(timer);},[busy,modal]);
 
  useEffect(()=>{if(user&&page==='login'){setPage('statistics');location.hash='admin/statistics';}},[user,page]);
 
@@ -68,7 +71,19 @@ function App(){
 
  async function login(e){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{setUser(await post('/login',Object.fromEntries(f)));setPage('statistics');location.hash='admin/statistics';});}
 
- async function createEvent(e){e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));await action(async()=>{await post('/events',f);await refresh();setModal(null);setNotice('Event created. Generate invitation codes to start collecting feedback.');});}
+ async function createEvent(e){
+  e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget)),fingerprint=JSON.stringify(f);
+  if(!creationRequest.current){try{creationRequest.current=JSON.parse(sessionStorage.getItem('cp_event_creation_request')||'null');}catch{}}
+  if(creationRequest.current?.fingerprint!==fingerprint)creationRequest.current={fingerprint,id:crypto.randomUUID()};
+  try{sessionStorage.setItem('cp_event_creation_request',JSON.stringify(creationRequest.current));}catch{}
+  await action(async()=>{
+   const created=await api('/events',{method:'POST',body:JSON.stringify({...f,requestId:creationRequest.current.id}),signal:AbortSignal.timeout(150000)});
+   creationRequest.current=null;try{sessionStorage.removeItem('cp_event_creation_request');}catch{}
+   setEvents(previous=>previous.some(item=>item.id===created.id)?previous:[...previous,created]);setModal(null);
+   setNotice('Event created. Generate invitation codes to start collecting feedback.');
+   refresh().catch(()=>setError('Your event was saved, but the report refresh failed. Open Events or refresh the page. Do not create the same event again.'));
+  });
+ }
 
  function go(p){if(p==='login'&&user)p='statistics';setPage(p.startsWith('submit')?'submit':p.startsWith('try')?'evaluator':p);setError('');setNotice('');location.hash=p==='home'?'':p==='login'?'admin/login':adminPages.includes(p)?'admin/'+p:p.replace(/^submit/,'participant');}
 
@@ -97,7 +112,7 @@ function App(){
 
  <footer className="footer"><span>ClubPulse <span className="footer-dot">/</span> Better events begin with listening.</span><button onClick={()=>go('privacy')}><Icon name="shield" size={13}/> Privacy & trust</button></footer></main></div>
 
- {modal&&<div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget&&!busy)setModal(null);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button className="modal-close icon-button" aria-label="Close dialog" onClick={()=>setModal(null)}><Icon name="close"/></button>{modal==='event'?<form onSubmit={createEvent}><span className="eyebrow">START LISTENING</span><h2 id="modal-title">Create an event</h2><p className="muted">Your event opens for feedback immediately.</p><label>Event name<input name="name" placeholder="e.g. Introduction to web development" maxLength={100} required autoFocus/></label><label>Event date<input name="date" type="date" required defaultValue={new Date().toISOString().slice(0,10)}/></label><label>Description<textarea name="description" placeholder="What was this event about?" maxLength={500} rows={3}/></label>{error&&<p className="error" role="alert">{error}</p>}<button className="primary full" disabled={busy}>{busy?'Creating event...':'Create event'}<Icon name="arrow" size={17}/></button></form>:<><span className="eyebrow">INVITE YOUR ATTENDEES</span><h2 id="modal-title">{modal.name}</h2><p className="muted">Send one unique code to each attendee. Keep the code list private.</p><label>Feedback link<div className="copy-row"><input readOnly value={location.origin+'/#participant/'+modal.id}/><button className="button" onClick={()=>navigator.clipboard.writeText(location.origin+'/#participant/'+modal.id).then(()=>setNotice('Feedback link copied.')).catch(()=>setError('Copy the link manually.'))}>Copy</button></div></label><form onSubmit={e=>{e.preventDefault();const count=Number(new FormData(e.currentTarget).get('count'));action(async()=>{setCodes((await post('/events/'+modal.id+'/invites',{count})).codes);});}}><label>Number of invitation codes<div className="copy-row"><input name="count" type="number" min="1" max="200" defaultValue="10" required/><button className="primary" disabled={busy}>{busy?'Generating...':'Generate'}</button></div></label></form>{error&&<p className="error">{error}</p>}{codes.length>0&&<div className="codes-result"><strong>{codes.length} codes generated</strong><p>Download now. Plaintext codes are shown only in this session.</p><textarea readOnly aria-label="Generated invitation codes" value={codes.join('\n')} rows={6}/><button className="button full" onClick={()=>downloadText(codes.join('\n'),'clubpulse-invitation-codes.txt')}><Icon name="download" size={16}/> Download codes</button><button className="button full" onClick={()=>downloadInvitationCards(modal,codes)}>Download printable invitation cards</button></div>}</>}</section></div>}
+ {modal&&<div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget&&!busy)setModal(null);}}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button className="modal-close icon-button" aria-label="Close dialog" disabled={busy} onClick={()=>setModal(null)}><Icon name="close"/></button>{modal==='event'?<form onSubmit={createEvent}><span className="eyebrow">START LISTENING</span><h2 id="modal-title">Create an event</h2><p className="muted">Your event opens for feedback immediately.</p><label>Event name<input name="name" placeholder="e.g. Introduction to web development" maxLength={100} required autoFocus/></label><label>Event date<input name="date" type="date" required defaultValue={new Date().toISOString().slice(0,10)}/></label><label>Description<textarea name="description" placeholder="What was this event about?" maxLength={500} rows={3}/></label>{error&&<p className="error" role="alert">{error}</p>}<div aria-live="polite">{busy&&<p className="workspace-notice" role="status">Preparing your event and its signing keys. Free hosting may take up to two minutes. Waiting {creationSeconds}s. Keep this form open; a retry will reuse the same request.</p>}</div><button className="primary full" disabled={busy}>{busy?'Creating event...':'Create event'}<Icon name="arrow" size={17}/></button></form>:<><span className="eyebrow">INVITE YOUR ATTENDEES</span><h2 id="modal-title">{modal.name}</h2><p className="muted">Send one unique code to each attendee. Keep the code list private.</p><label>Feedback link<div className="copy-row"><input readOnly value={location.origin+'/#participant/'+modal.id}/><button className="button" onClick={()=>navigator.clipboard.writeText(location.origin+'/#participant/'+modal.id).then(()=>setNotice('Feedback link copied.')).catch(()=>setError('Copy the link manually.'))}>Copy</button></div></label><form onSubmit={e=>{e.preventDefault();const count=Number(new FormData(e.currentTarget).get('count'));action(async()=>{setCodes((await post('/events/'+modal.id+'/invites',{count})).codes);});}}><label>Number of invitation codes<div className="copy-row"><input name="count" type="number" min="1" max="200" defaultValue="10" required/><button className="primary" disabled={busy}>{busy?'Generating...':'Generate'}</button></div></label></form>{error&&<p className="error">{error}</p>}{codes.length>0&&<div className="codes-result"><strong>{codes.length} codes generated</strong><p>Download now. Plaintext codes are shown only in this session.</p><textarea readOnly aria-label="Generated invitation codes" value={codes.join('\n')} rows={6}/><button className="button full" onClick={()=>downloadText(codes.join('\n'),'clubpulse-invitation-codes.txt')}><Icon name="download" size={16}/> Download codes</button><button className="button full" onClick={()=>downloadInvitationCards(modal,codes)}>Download printable invitation cards</button></div>}</>}</section></div>}
 
  </div>;
 

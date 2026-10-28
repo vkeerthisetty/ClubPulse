@@ -13,6 +13,14 @@ test('separate issuance, credential-free collection and sealed privacy reports',
  assert.equal((await call('/api/diagnostics')).r.status,401);
  const login=await call('/api/login',{email:'  ADMIN@CLUBPULSE.LOCAL  ',password:'local-preview-only'});assert.equal(login.r.status,200);assert.equal(login.data.role,'admin');cookie=login.r.headers.get('set-cookie').split(';')[0];assert.ok(login.r.headers.get('set-cookie').includes('Path=/api'));
  const config=(await call('/api/config')).data;assert.equal(config.issuerOrigin,'http://localhost:3012');
+ // A slow or interrupted response can be retried without creating another event.
+ const requestId=crypto.randomUUID(),creation={name:'Retry-safe event',description:'Creation retry test',date:'2026-10-28',requestId};
+ const [createdA,createdB]=await Promise.all([call('/api/events',creation,true),call('/api/events',creation,true)]);
+ assert.equal(createdA.r.status,201);assert.equal(createdB.r.status,201);assert.equal(createdA.data.id,requestId);assert.equal(createdB.data.id,requestId);
+ assert.equal((await call('/api/events',creation,true)).data.id,requestId);
+ assert.equal((await call('/api/events',{...creation,name:'Different event'},true)).r.status,409);
+ assert.equal((await call('/api/events',{name:'Invalid date',date:'2026-02-30'},true)).r.status,400);
+ assert.equal((await call('/api/events')).data.filter(e=>e.id===requestId).length,1);
  const diagnostics=await call('/api/diagnostics',null,true);assert.equal(diagnostics.r.status,200);assert.equal(diagnostics.data.database,true);assert.equal(diagnostics.data.issuance,true);assert.equal(diagnostics.data.separateOrigin,true);
  assert.equal((await call('/api/showcase?rating=5')).r.status,400);
  const showcase=await call('/api/showcase');assert.equal(showcase.r.status,200);assert.equal(showcase.data.readOnly,true);assert.equal(showcase.data.count,null);assert.ok(showcase.data.events.every(e=>e.demo&&e.report));
@@ -52,14 +60,14 @@ test('separate issuance, credential-free collection and sealed privacy reports',
   const payload={eventId:id,rating:[5,4,4,3,5][i],category:i%2?'Delivery':'Content',comment:'Released comment '+i,message:enc(message),signature:enc(sig)};
   if(i===0){first=payload;assert.equal((await call('/api/feedback',payload,true)).r.status,400);assert.equal((await call('/api/feedback',{...payload,code:invites[i]})).r.status,400);assert.equal((await call('/api/feedback',{...payload,signature:enc(new Uint8Array(256))})).r.status,403);for(const field of ['email','userId','timestamp','ipAddress'])assert.equal((await call('/api/feedback',{...payload,[field]:'forbidden metadata'})).r.status,400);assert.equal((await fetch(base+'/api/feedback',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer participant'},body:JSON.stringify(payload)})).status,400);}
   assert.equal((await call('/api/feedback',payload)).r.status,201);
-  const protectedStats=(await call('/api/statistics?event='+id,null,true)).data;assert.equal(protectedStats.count,null);assert.equal(protectedStats.feedback.length,0);assert.equal(protectedStats.events[0].count,null);
+  const protectedStats=(await call('/api/statistics?event='+id,null,true)).data;assert.equal(protectedStats.count,null);assert.equal(protectedStats.feedback.length,0);assert.equal(protectedStats.events.find(e=>e.id===id).count,null);
  }
  assert.equal((await call('/api/feedback',first)).r.status,409);assert.equal((await call('/api/feedback',{...first,message:first.message+'\n'})).r.status,409);
  assert.equal((await call('/api/statistics?rating=5',null,true)).r.status,400);assert.equal((await call('/api/export',null,true)).r.status,403);
  assert.equal((await call('/api/events/'+id,{open:false},true,'PATCH')).r.status,200);
  assert.equal((await call('/api/statistics',null,true)).data.count,null);
  await new Promise(r=>setTimeout(r,1100));
- const released=(await call('/api/statistics',null,true)).data;assert.equal(released.count,5);assert.equal(released.average,4.2);assert.equal(released.positive,null);assert.ok(released.distribution.every(c=>c.count===null));assert.equal(released.events[0].reportState,'released');
+ const released=(await call('/api/statistics',null,true)).data;assert.equal(released.count,5);assert.equal(released.average,4.2);assert.equal(released.positive,null);assert.ok(released.distribution.every(c=>c.count===null));assert.equal(released.events.find(e=>e.id===id).reportState,'released');
  const scoped=(await call('/api/statistics?event='+id,null,true)).data;assert.equal(scoped.scope,id);assert.equal(scoped.count,5);
  assert.deepEqual(Object.keys(released.feedback[0]).sort(),['comment','demo','eventId']);
  const privateShowcase=await call('/api/showcase?event='+id);assert.equal(privateShowcase.data.count,null);assert.equal(privateShowcase.data.feedback.length,0);

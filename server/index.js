@@ -53,7 +53,21 @@ app.post('/api/login',rateLimit({windowMs:15*60000,limit:10,handler:(_req,res)=>
 app.get('/api/session',auth,(req,res)=>res.json({email,role:'admin'}));
 app.post('/api/logout',auth,(req,res)=>{sessions.delete(req.sessionToken);res.setHeader('Set-Cookie','cp_session=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0');res.json({ok:true});});
 app.get('/api/events',safe(async(req,res)=>res.json((await db.events()).map(publicEvent))));
-app.post('/api/events',auth,safe(async(req,res)=>{const {name,description='',date}=req.body;if(typeof name!=='string'||!name.trim()||name.length>100||typeof description!=='string'||description.length>500||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return res.status(400).json({error:'Enter a name, date, and description under 500 characters.'});const id=randomUUID(),key=await issuer('/events',{id});const e=await db.addEvent({_id:id,name:name.trim(),description:description.trim(),date,open:true,publicJwk:key.publicJwk});res.status(201).json(publicEvent(e));}));
+const creatingEvents=new Map();
+app.post('/api/events',auth,safe(async(req,res)=>{
+ const {name,description='',date,requestId}=req.body;
+ if(typeof name!=='string'||!name.trim()||name.length>100||typeof description!=='string'||description.length>500||!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date||requestId!==undefined&&(typeof requestId!=='string'||!/^[a-f0-9-]{36}$/.test(requestId)))return res.status(400).json({error:'Enter a valid event name, calendar date and description under 500 characters.'});
+ const id=requestId||randomUUID();
+ let pending=creatingEvents.get(id);
+ if(!pending){pending=(async()=>{
+  const existing=await db.event(id);if(existing)return existing;
+  const key=await issuer('/events',{id});
+  try{return await db.addEvent({_id:id,name:name.trim(),description:description.trim(),date,open:true,publicJwk:key.publicJwk});}catch(error){if(error.code!==11000)throw error;return db.event(id);}
+ })();creatingEvents.set(id,pending);pending.finally(()=>creatingEvents.delete(id)).catch(()=>{});}
+ const e=await pending;
+ if(e.name!==name.trim()||e.description!==description.trim()||e.date!==date)return res.status(409).json({error:'This creation request already belongs to another event. Open a new creation form.'});
+ res.status(201).json(publicEvent(e));
+}));
 app.patch('/api/events/:id',auth,safe(async(req,res)=>{const e=await db.event(req.params.id);if(!e)return res.status(404).json({error:'Event not found.'});if(production&&e.demo)return res.status(409).json({error:'Demonstration reports are read-only. Create a club event to collect feedback.'});if(typeof req.body.open!=='boolean')return res.status(400).json({error:'Invalid state.'});if(e.report&&!e.demo)return res.status(409).json({error:'This event has a sealed report. Create a new event instead of changing its cohort.'});if(req.body.open){await issuer('/events/'+e._id+'/state',{open:true});await db.updateEvent(e._id,{open:true,releaseAt:null});}else{await db.updateEvent(e._id,{open:false,releaseAt:Date.now()+releaseDelay});await issuer('/events/'+e._id+'/state',{open:false});}res.json({ok:true});}));
 app.post('/api/events/:id/invites',auth,safe(async(req,res)=>{const e=await db.event(req.params.id);if(!e||!e.open)return res.status(400).json({error:'Event is not open.'});if(production&&e.demo)return res.status(409).json({error:'Demonstration reports are read-only. Create a club event to distribute invitations.'});res.json(await issuer('/events/'+e._id+'/invites',{count:req.body.count}));}));
 app.patch('/api/events/:id/details',auth,safe(async(req,res)=>{
