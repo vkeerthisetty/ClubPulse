@@ -8,6 +8,7 @@ import {connect,store} from './store.js';
 import {startIssuer} from './issuer.js';
 import {MINIMUM,RELEASE_DELAY_MS,sealReport,combineReports,validateReportQuery,reportCsv} from './privacy.js';
 import {installEvaluator} from './evaluator.js';
+import {createIssuerClient} from './issuerClient.js';
 const production=process.env.NODE_ENV==='production';
 const demo=process.env.DEMO_MODE==='true'||(!process.env.MONGODB_URI&&!production);
 if(production&&demo)throw new Error('Demo mode forbidden in production.');
@@ -24,7 +25,7 @@ if(!process.env.ISSUER_URL){
   if(!demo)throw new Error('Configure ISSUER_URL for the separately deployed issuance service.');
   await startIssuer({demo:true,secret:issuerSecret,port:issuerPort,origin});
 }
-async function issuer(path,body){const r=await fetch(issuerOrigin+'/internal'+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+issuerSecret},body:JSON.stringify(body),signal:AbortSignal.timeout(75000)});let data;try{data=await r.json();}catch{throw Object.assign(new Error('The invitation service is starting. Please retry in a moment.'),{status:503});}if(!r.ok)throw Object.assign(new Error(data.error||'Issuer unavailable.'),{status:503});return data;}
+const issuer=createIssuerClient(issuerOrigin,issuerSecret);
 await connect(demo);
 const db=store(demo),suite=RSABSSA.SHA384.PSS.Randomized();
 // Accelerated clock only for isolated automated tests, never a deployment setting.
@@ -112,6 +113,6 @@ app.get('/api/diagnostics',auth,safe(async(req,res)=>{
 }));
 app.get('/api/health',(req,res)=>res.json({ok:true,demo,role:'collector'}));
 app.use('/api',(req,res)=>res.status(404).json({error:'API route not found.'}));
-if(production){app.use(express.static('dist'));app.get('/{*path}',(req,res)=>res.sendFile('index.html',{root:'dist'}));}else if(process.env.NODE_ENV!=='test'){const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true},appType:'spa'});app.use(vite.middlewares);}
+if(production||process.env.LOCAL_PRESENTATION==='true'){app.use(express.static('dist'));app.get('/{*path}',(req,res)=>res.sendFile('index.html',{root:'dist'}));}else if(process.env.NODE_ENV!=='test'){const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true},appType:'spa'});app.use(vite.middlewares);}
 app.use((err,req,res,next)=>res.status(err.code===11000?409:err.status||500).json({error:err.code===11000?'Token already used.':err.status?err.message:'Request could not be processed.'}));
 app.listen(port,production?'0.0.0.0':'127.0.0.1',()=>console.log(`ClubPulse collector: http://localhost:${port}. No request or body logging.`));

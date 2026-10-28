@@ -10,3 +10,5 @@ clubpulse-invitation-codes*.txt
 
 output/pdf/final-page-*.png
 output/pdf/guide-page-*.png
+output/offline/
+output/ClubPulse_Offline_Demo.zip
