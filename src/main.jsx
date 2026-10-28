@@ -64,7 +64,7 @@ function App(){
 
  async function refresh(){const [d,e]=await Promise.all([api('/statistics?'+query),api('/events')]);setData(d);setEvents(e);}
 
- useEffect(()=>{if(!user||!adminPages.includes(page))return;let active=true;setLoading(true);api('/statistics?'+query).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[user,event,period,rating,category,search,from,to,page]);
+ useEffect(()=>{if(!user||!adminPages.includes(page))return;let active=true;setLoading(true);api('/statistics?'+query).then(d=>{if(active){setData(d);if(Array.isArray(d.events))setEvents(d.events);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[user,event,period,rating,category,search,from,to,page]);
  useEffect(()=>{if(page!=='demo')return;let active=true;setLoading(true);api('/showcase?'+demoQuery,{anonymous:true}).then(d=>{if(active)setShowcase(d);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[page,demoEvent]);
 
  async function action(fn){setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}}
